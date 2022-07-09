@@ -27,14 +27,16 @@ namespace Client1
     public partial class MainWindow : Window
     {
         public static Random rnd = new Random();
-        public static TcpClient client;
-        public static TcpListener reciver;
+        public static TcpClient clientTcp;
+        public static UdpClient clientUdp;
         public static NetworkStream stream;
-        public static Int32 portAddress;
-        public protocol type=protocol.tcp;
+        public static IPEndPoint groupEp;
+        public static Int32 portAddressTcp;
+        public static Int32 portAddressUdp;
+        public protocol type;
         public static ComboBox contactsComboBox;
         public static TextBlock reciveBox;
-        public static bool OnLine = false;
+        public static bool OnLine = false, checkFlag=false;
         public MainWindow()
         {
             InitializeComponent();            
@@ -64,14 +66,18 @@ namespace Client1
             stream.Write(data, 0, data.Length);
             Console.WriteLine("Sent: {0}", msg);
             stream.Close();
-            client.Close();
+            clientTcp.Close();
         }
 
         private void can_Loaded(object sender, RoutedEventArgs e)
         {
-            portAddress = rnd.Next(5000, 13000);
-            Thread t1 = new Thread(() => AlwaysRecive());
+            portAddressTcp = rnd.Next(5000, 13000);
+            portAddressUdp = rnd.Next(15000, 20000);
+            groupEp = new IPEndPoint(IPAddress.Any, 0);
+            Thread t1 = new Thread(() => AlwaysReciveTcp());
+            Thread t2=new Thread(() => AlwaysReciveUdp());
             t1.Start();
+            t2.Start();
             contactsComboBox = new ComboBox();
             contactsComboBox.Width = 125;
             contactsComboBox.Height = 35;
@@ -86,26 +92,61 @@ namespace Client1
             reciveBox.VerticalAlignment = VerticalAlignment.Center;
             can.Children.Add(contactsComboBox);
             can.Children.Add(reciveBox);
-
+            type = protocol.tcp;
+            tcpChoose.IsEnabled = false;
+            udpChoose.IsEnabled = true;
         }
 
-        private void AlwaysRecive()
+        private void AlwaysReciveUdp()
+        {
+            checkFlag = true;
+            while(true)
+            {
+                if (clientUdp!=null&&OnLine)
+                {              
+                    Byte[] receiveBytes = clientUdp.Receive(ref groupEp);
+                    string returnData = Encoding.ASCII.GetString(receiveBytes);
+                    addTextToReciveBox(returnData);
+                }
+            }
+        }
+
+        private void AlwaysReciveTcp()
         {
             
             while(true)
             {
                 if (OnLine)
-                {
-                    
+                {                    
                     Byte[] data = new Byte[256];
                     String reciveMsg = String.Empty;
-                    NetworkStream stream = client.GetStream();
+                    NetworkStream stream = clientTcp.GetStream();
                     Int32 bytes = stream.Read(data, 0, data.Length);
                     reciveMsg = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
-                    addTextToReciveBox(reciveMsg);
+                    if (reciveMsg.Split("/").Last()=="Contacts")
+                    {
+                        ChangeContactList(reciveMsg.Substring(reciveMsg.Length-9));
+                    }
+                    else
+                    {
+                        addTextToReciveBox(reciveMsg.Substring(reciveMsg.Length - 9));
+                    }
                 }
             }
             
+        }
+
+        private void ChangeContactList(string reciveMsg)
+        {
+            this.Dispatcher.Invoke(() =>
+            {
+                contactsComboBox.Items.Clear();
+                string[] onlineMembers = reciveMsg.Split('\\');
+                for (int i = 0; i < onlineMembers.Length; i++)
+                {
+                    contactsComboBox.Items.Add(onlineMembers[i]);
+                }
+            });
         }
 
         private void addTextToReciveBox(string reciveMsg)
@@ -121,11 +162,12 @@ namespace Client1
         {
             try
             {
+                /*----- Tcp Connection -----*/
                 Int32 port = 13000;
-                client = new TcpClient(server, port);               
-                string message = $"{name}/{portAddress}/Connect";
+                clientTcp = new TcpClient(server, port);
+                string message = $"{name}/{portAddressTcp}/ConnectTcp";
                 Byte[] data = System.Text.Encoding.ASCII.GetBytes(message);
-                stream = client.GetStream();
+                stream = clientTcp.GetStream();
                 stream.Write(data, 0, data.Length);
                 Console.WriteLine("Sent: {0}", message);
 
@@ -135,12 +177,19 @@ namespace Client1
                 Int32 bytes = stream.Read(data, 0, data.Length);
                 onlineMem = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
                 Console.WriteLine("Received: {0}", onlineMem);
-                string [] namesOnline=onlineMem.Split('/');
-                for(int i = 0; i < namesOnline.Length; i++)
+                string[] namesOnline = onlineMem.Split('/');
+                for (int i = 0; i < namesOnline.Length; i++)
                 {
                     contactsComboBox.Items.Add(namesOnline[i]);
                 }
 
+                /*---- Udp Connection ----*/
+                Int32 portUdp = 14000;
+                clientUdp=new UdpClient(portAddressUdp);
+                clientUdp.Connect("127.0.0.1", portUdp);
+                message = $"{name}/{portAddressUdp}/ConnectUdp";
+                data = System.Text.Encoding.ASCII.GetBytes(message);
+                clientUdp.Send(data);              
             }
             catch (ArgumentNullException e)
             {
@@ -156,28 +205,33 @@ namespace Client1
 
         private void Button_Click_1(object sender, RoutedEventArgs e)//Send msg
         {
-            
-            
-            string msg = $"{contactsComboBox.SelectedItem}/{toSend.Text}/Send";
-            Byte[] data = System.Text.Encoding.ASCII.GetBytes(msg);
-            
-            stream.Write(data, 0, data.Length);
-            Console.WriteLine("Sent: {0}", msg);
-            
+
+            if (type == protocol.tcp)
+            {
+                string msg = $"{Username.Text}/{contactsComboBox.SelectedItem}/{toSend.Text}/Send";
+                Byte[] data = System.Text.Encoding.ASCII.GetBytes(msg);
+                stream.Write(data, 0, data.Length);
+                Console.WriteLine("Sent: {0}", msg);
+            }
+            else
+            {
+                string msg = $"{Username.Text}/{contactsComboBox.SelectedItem}/{toSend.Text}/Send";
+                Byte[] data = System.Text.Encoding.ASCII.GetBytes(msg);
+                clientUdp.Send(data);
+            }
 
         }
 
-        private void Button_Click_2(object sender, RoutedEventArgs e)
-        {
+        private void Button_Click_2(object sender, RoutedEventArgs e) {
             type = protocol.tcp;
             tcpChoose.IsEnabled = false;
-            udpChoose.IsEnabled = false;
+            udpChoose.IsEnabled = true;
         }
 
         private void udpChoose_Click(object sender, RoutedEventArgs e)
         {
             type = protocol.udp;
-            tcpChoose.IsEnabled = false;
+            tcpChoose.IsEnabled = true;
             udpChoose.IsEnabled = false;
         }
     }
