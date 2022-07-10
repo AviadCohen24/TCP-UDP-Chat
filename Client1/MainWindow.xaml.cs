@@ -123,13 +123,14 @@ namespace Client1
                     NetworkStream stream = clientTcp.GetStream();
                     Int32 bytes = stream.Read(data, 0, data.Length);
                     reciveMsg = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
-                    if (reciveMsg.Split("/").Last()=="Contacts")
+                    string[] msg=reciveMsg.Split('-');
+                    if (msg[msg.Length-1] =="Contacts")
                     {
-                        ChangeContactList(reciveMsg.Substring(reciveMsg.Length-9));
+                        ChangeContactList(reciveMsg.Replace("-Contacts",""));
                     }
                     else
                     {
-                        addTextToReciveBox(reciveMsg.Substring(reciveMsg.Length - 9));
+                        addTextToReciveBox(reciveMsg.Replace("-Message", ""));
                     }
                 }
             }
@@ -141,8 +142,8 @@ namespace Client1
             this.Dispatcher.Invoke(() =>
             {
                 contactsComboBox.Items.Clear();
-                string[] onlineMembers = reciveMsg.Split('\\');
-                for (int i = 0; i < onlineMembers.Length; i++)
+                string[] onlineMembers = reciveMsg.Split('/');
+                for (int i = 0; i < onlineMembers.Length-1; i++)
                 {
                     contactsComboBox.Items.Add(onlineMembers[i]);
                 }
@@ -173,14 +174,16 @@ namespace Client1
 
                 /* --------Contact List  --------*/
                 data = new Byte[256];
-                String onlineMem = String.Empty;
+                string onlineMem = string.Empty;
                 Int32 bytes = stream.Read(data, 0, data.Length);
                 onlineMem = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
                 Console.WriteLine("Received: {0}", onlineMem);
+                onlineMem = onlineMem.Replace("-Contacts", "");
                 string[] namesOnline = onlineMem.Split('/');
                 for (int i = 0; i < namesOnline.Length; i++)
                 {
-                    contactsComboBox.Items.Add(namesOnline[i]);
+                    if (namesOnline[i] !="Contacts")
+                        contactsComboBox.Items.Add(namesOnline[i]);
                 }
 
                 /*---- Udp Connection ----*/
