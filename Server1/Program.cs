@@ -220,16 +220,18 @@ namespace Server1
 
         private static void SendMessage(string data, string nameSender)
         {
-            foreach (Clients c in members)
+            foreach (AllClients c in members)
             {
-                if (c.name == data.Split("/")[1])
+                if (c.GetType()==typeof(Clients)&&c.name == data.Split("/")[1])
                 {
-                    string msg = nameSender+": "+data.Split("/")[2]+ "/Message";
+                    Clients client = (Clients)c;
+                    string msg = nameSender+": "+data.Split("/")[2]+ "-Message";
                     byte[] msgToSend = System.Text.Encoding.ASCII.GetBytes(msg);
-                    NetworkStream stream=c.client.GetStream();  
+                    NetworkStream stream = client.client.GetStream(); 
                     stream.Write(msgToSend, 0, msgToSend.Length);
-                }
-                break;
+                    Console.WriteLine($"sent {msg} to {client.name}");
+                    break;
+                }               
             }
         }
 
@@ -249,7 +251,6 @@ namespace Server1
                 {
                     Clients temp = (Clients)c;
                     string onlineMem = ListToSTring(temp.name);
-                    onlineMem += "/Contacts";
                     byte[] buffer = System.Text.Encoding.ASCII.GetBytes(onlineMem);
                     NetworkStream stream = temp.client.GetStream();
                     stream.Write(buffer, 0, buffer.Length);
@@ -263,13 +264,11 @@ namespace Server1
             foreach (var cl in members)
             {
                 if(cl.name!=name&&cl.IsOnline&&!cl.name.Contains("UdpTemp"))
-                    ret+=$"{cl.name}\\";
+                    ret+=$"{cl.name}/";
             }
+            ret = ret + "-Contacts";
             Console.WriteLine($"User online sent {ret}");
-            if (ret != "")
-                return ret.Substring(0, ret.Length - 1);
-            else
-                return "\\";
+            return ret;
         }
     }
 }
