@@ -7,17 +7,23 @@
         mc:Ignorable="d"
         Title="Chat" Height="550" Width="900">
     <Canvas Name="can" Loaded="can_Loaded">
+        <TextBlock Name="ConnectError" FontSize="20" FontStyle="Italic" Canvas.Left="120" Canvas.Top="65" TextAlignment="Center" Foreground="Red"/>
         <TextBlock Text="Chat" FontSize="30" FontStyle="Italic" Canvas.Left="414" FontWeight="Bold" Canvas.Top="21" HorizontalAlignment="Left" VerticalAlignment="Top" Width="72"/>
         <TextBlock Text="Choose contact" FontSize="25" FontStyle="Italic" Canvas.Top="95" Canvas.Left="40"/>
         <TextBlock Text="Send Message" FontSize="25" FontStyle="Italic"  Canvas.Left="124" Canvas.Top="172" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-        <TextBox Name="toSend" Width="322" Height="250" Canvas.Left="38" Canvas.Top="226"/>
-        
+        <Border Width="322" Height="250" Canvas.Left="38" Canvas.Top="226" BorderBrush="Gray" BorderThickness="1">
+            <TextBox Name="toSend" />
+        </Border>
+        <ComboBox Name="contactsComboBox" Width="125" Height="35" Canvas.Left="250" Canvas.Top="97"/>
+        <Border Width="322" Height="250" Canvas.Left="512" Canvas.Top="226" HorizontalAlignment="Left" VerticalAlignment="Center" BorderBrush="Gray" BorderThickness="1">
+            <TextBlock Name="reciveBox"/>
+        </Border>
         <TextBlock Text="Recived" FontSize="25" FontStyle="Italic"  Canvas.Left="632" Canvas.Top="172"/>
         <TextBlock Text="Choose Protocol:" FontSize="25" FontStyle="Italic" Canvas.Left="450" Canvas.Top="101"/>
-        <Button Name="tcpChoose" Content="TCP" FontSize="25" FontStyle="Italic" Canvas.Left="668" Canvas.Top="105" Click="Button_Click_2"/>
-        <Button Name="udpChoose" Content="UDP" FontSize="25" FontStyle="Italic" Canvas.Left="749" Canvas.Top="105" Click="udpChoose_Click"/>
-        <Button Content="Send" FontSize="25" FontStyle="Italic" Canvas.Left="394" Canvas.Top="332" HorizontalAlignment="Left" VerticalAlignment="Center" Click="Button_Click_1"/>
-        <Button Name="ConnectBtn" Content="Connect" FontSize="25" FontStyle="Italic" Canvas.Left="749" Canvas.Top="26" Height="49" Width="120" HorizontalAlignment="Center" VerticalAlignment="Top" Click="Button_Click"/>
+        <Button Name="tcpChoose" Content="TCP" FontSize="25" FontStyle="Italic" Canvas.Left="668" Canvas.Top="105" Click="ChooseTcp"/>
+        <Button Name="udpChoose" Content="UDP" FontSize="25" FontStyle="Italic" Canvas.Left="749" Canvas.Top="105" Click="ChooseUdp"/>
+        <Button Content="Send" FontSize="25" FontStyle="Italic" Canvas.Left="394" Canvas.Top="332" HorizontalAlignment="Left" VerticalAlignment="Center" Click="SendButton"/>
+        <Button Name="ConnectBtn" Content="Connect" FontSize="25" FontStyle="Italic" Canvas.Left="749" Canvas.Top="26" Height="49" Width="120" HorizontalAlignment="Center" VerticalAlignment="Top" Click="ConnectButton"/>
         <TextBlock Text="Name:" FontSize="25" FontStyle="Italic" Canvas.Left="40" Canvas.Top="30"/>
         <TextBox Name="Username" FontSize="25" FontStyle="Italic" Canvas.Top="30" Canvas.Left="120" Width="150"/>
     </Canvas>

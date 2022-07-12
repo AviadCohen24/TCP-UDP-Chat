@@ -16,6 +16,8 @@ using System.Windows.Shapes;
 using System.Net.Sockets;
 using System.Net;
 using System.Threading;
+using System.Diagnostics;
+using System.Windows.Threading;
 
 namespace Client1
 {
@@ -31,30 +33,66 @@ namespace Client1
         public static UdpClient clientUdp;
         public static NetworkStream stream;
         public static IPEndPoint groupEp;
-        public static Int32 portAddressTcp;
-        public static Int32 portAddressUdp;
+        public static Int32 portAddressTcp, portAddressUdp;
         public protocol type;
-        public static ComboBox contactsComboBox;
-        public static TextBlock reciveBox;
         public static bool OnLine = false, checkFlag=false;
+        public static string error;
+        DispatcherTimer timer;
+        public static int countTimer;
+
         public MainWindow()
         {
             InitializeComponent();            
         }
 
-        private void Button_Click(object sender, RoutedEventArgs e)
+        private void ConnectButton(object sender, RoutedEventArgs e)
         {
-            if (!OnLine)
+            if (CheckConnectError()&&!OnLine)
             {
                 ConnectServer("127.0.0.1",Username.Text);
                 ConnectBtn.Content = "Disconnect";
                 OnLine = true;
             }
-            else
+            else if(CheckConnectError())
             {
                 Disconnect(Username.Text);
                 ConnectBtn.Content = "Connect";
                 OnLine=false;
+            }
+        }
+
+        private bool CheckConnectError()
+        {
+            if (Username.Text == "")
+            {
+                error = "You need to insert your name";
+                SetShowError();
+                return false;
+            }
+            return true;
+
+        }
+
+        private void SetShowError()
+        {
+            countTimer = 5;
+            timer = new DispatcherTimer();
+            timer.Interval = TimeSpan.FromSeconds(1);
+            timer.Tick += ShowErrorConnect;
+            this.Dispatcher.Invoke(() =>
+            {
+                ConnectError.Text = "You need to insert your name please";
+            });
+            timer.Start();
+        }
+
+        private void ShowErrorConnect(object? sender, EventArgs e)
+        {
+            countTimer--;
+            if (countTimer == 0)
+            {
+                ConnectError.Text = "";
+                timer.Stop();
             }
         }
 
@@ -74,24 +112,10 @@ namespace Client1
             portAddressTcp = rnd.Next(5000, 13000);
             portAddressUdp = rnd.Next(15000, 20000);
             groupEp = new IPEndPoint(IPAddress.Any, 0);
-            Thread t1 = new Thread(() => AlwaysReciveTcp());
-            Thread t2=new Thread(() => AlwaysReciveUdp());
+            Thread t1 = new Thread(AlwaysReciveTcp);
+            Thread t2=new Thread(AlwaysReciveUdp);
             t1.Start();
-            t2.Start();
-            contactsComboBox = new ComboBox();
-            contactsComboBox.Width = 125;
-            contactsComboBox.Height = 35;
-            Canvas.SetLeft(contactsComboBox, 250);
-            Canvas.SetTop(contactsComboBox, 97);
-            reciveBox = new TextBlock();
-            reciveBox.Width = 322;
-            reciveBox.Height = 250;
-            Canvas.SetLeft(reciveBox, 512);
-            Canvas.SetTop(reciveBox, 226);
-            reciveBox.HorizontalAlignment = HorizontalAlignment.Left;
-            reciveBox.VerticalAlignment = VerticalAlignment.Center;
-            can.Children.Add(contactsComboBox);
-            can.Children.Add(reciveBox);
+            t2.Start();            
             type = protocol.tcp;
             tcpChoose.IsEnabled = false;
             udpChoose.IsEnabled = true;
@@ -112,29 +136,33 @@ namespace Client1
         }
 
         private void AlwaysReciveTcp()
-        {
-            
+        {            
             while(true)
             {
                 if (OnLine)
                 {                    
                     Byte[] data = new Byte[256];
-                    String reciveMsg = String.Empty;
                     NetworkStream stream = clientTcp.GetStream();
                     Int32 bytes = stream.Read(data, 0, data.Length);
-                    reciveMsg = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
-                    string[] msg=reciveMsg.Split('-');
-                    if (msg[msg.Length-1] =="Contacts")
-                    {
-                        ChangeContactList(reciveMsg.Replace("-Contacts",""));
-                    }
-                    else
-                    {
-                        addTextToReciveBox(reciveMsg.Replace("-Message", ""));
-                    }
+                    CheckReciveMessage(data, bytes);
+                    
                 }
+            }   
+        }
+
+        private void CheckReciveMessage(byte[] data, int bytes)
+        {
+            String reciveMsg = String.Empty;
+            reciveMsg = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
+            string[] msg = reciveMsg.Split('-');
+            if (msg[msg.Length - 1] == "Contacts")
+            {
+                ChangeContactList(reciveMsg.Replace("-Contacts", ""));
             }
-            
+            else
+            {
+                addTextToReciveBox(reciveMsg.Replace("-Message", ""));
+            }
         }
 
         private void ChangeContactList(string reciveMsg)
@@ -161,77 +189,68 @@ namespace Client1
 
         public static void ConnectServer(String server,string name)
         {
+            TcpConnectionServer(server, name);
+            UdpConnectionServer(name);
+        }
+
+        private static void UdpConnectionServer(string name)
+        {
+            Int32 portUdp = 14000;
+            clientUdp = new UdpClient(portAddressUdp);
             try
             {
-                /*----- Tcp Connection -----*/
-                Int32 port = 13000;
-                clientTcp = new TcpClient(server, port);
+                clientUdp.Connect("127.0.0.1", portUdp);
+                string message = $"{name}/{portAddressUdp}/ConnectUdp";
+                Byte[] data = System.Text.Encoding.ASCII.GetBytes(message);
+                clientUdp.Send(data);
+            }
+            catch(Exception e)
+            {
+                Debug.WriteLine($"Function name: UdpConnectionServer\nException: {e.Message}");
+            }
+            
+        }
+
+        private static void TcpConnectionServer(string server, string name)
+        {
+            Int32 port = 13000;
+            clientTcp = new TcpClient(server, port);
+            try
+            {
                 string message = $"{name}/{portAddressTcp}/ConnectTcp";
                 Byte[] data = System.Text.Encoding.ASCII.GetBytes(message);
                 stream = clientTcp.GetStream();
                 stream.Write(data, 0, data.Length);
                 Console.WriteLine("Sent: {0}", message);
-
-                /* --------Contact List  --------*/
-                data = new Byte[256];
-                string onlineMem = string.Empty;
-                Int32 bytes = stream.Read(data, 0, data.Length);
-                onlineMem = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
-                Console.WriteLine("Received: {0}", onlineMem);
-                onlineMem = onlineMem.Replace("-Contacts", "");
-                string[] namesOnline = onlineMem.Split('/');
-                for (int i = 0; i < namesOnline.Length; i++)
-                {
-                    if (namesOnline[i] !="Contacts")
-                        contactsComboBox.Items.Add(namesOnline[i]);
-                }
-
-                /*---- Udp Connection ----*/
-                Int32 portUdp = 14000;
-                clientUdp=new UdpClient(portAddressUdp);
-                clientUdp.Connect("127.0.0.1", portUdp);
-                message = $"{name}/{portAddressUdp}/ConnectUdp";
-                data = System.Text.Encoding.ASCII.GetBytes(message);
-                clientUdp.Send(data);              
-            }
-            catch (ArgumentNullException e)
+            }catch(Exception e)
             {
-                Console.WriteLine("ArgumentNullException: {0}", e);
+                Debug.WriteLine($"Function name: TcpConnectionServer\nException: {e.Message}");
             }
-            catch (SocketException e)
-            {
-                Console.WriteLine("SocketException: {0}", e);
-            }
-
-            
         }
 
-        private void Button_Click_1(object sender, RoutedEventArgs e)//Send msg
+        private void SendButton(object sender, RoutedEventArgs e)//Send msg
         {
-
+            string msg = $"{Username.Text}/{contactsComboBox.SelectedItem}/{toSend.Text}/Send";
+            Byte[] data = System.Text.Encoding.ASCII.GetBytes(msg);
             if (type == protocol.tcp)
             {
-                string msg = $"{Username.Text}/{contactsComboBox.SelectedItem}/{toSend.Text}/Send";
-                Byte[] data = System.Text.Encoding.ASCII.GetBytes(msg);
                 stream.Write(data, 0, data.Length);
                 Console.WriteLine("Sent: {0}", msg);
             }
             else
             {
-                string msg = $"{Username.Text}/{contactsComboBox.SelectedItem}/{toSend.Text}/Send";
-                Byte[] data = System.Text.Encoding.ASCII.GetBytes(msg);
                 clientUdp.Send(data);
             }
 
         }
 
-        private void Button_Click_2(object sender, RoutedEventArgs e) {
+        private void ChooseTcp(object sender, RoutedEventArgs e) {
             type = protocol.tcp;
             tcpChoose.IsEnabled = false;
             udpChoose.IsEnabled = true;
         }
 
-        private void udpChoose_Click(object sender, RoutedEventArgs e)
+        private void ChooseUdp(object sender, RoutedEventArgs e)
         {
             type = protocol.udp;
             tcpChoose.IsEnabled = true;
