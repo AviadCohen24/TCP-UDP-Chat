@@ -18,6 +18,7 @@ using System.Net;
 using System.Threading;
 using System.Diagnostics;
 using System.Windows.Threading;
+using System.IO;
 
 namespace Client1
 {
@@ -35,10 +36,13 @@ namespace Client1
         public static IPEndPoint groupEp;
         public static Int32 portAddressTcp, portAddressUdp;
         public protocol type;
-        public static bool OnLine = false, checkFlag=false;
+        public static bool OnLine = false, checkFirstConnect = true;
         public static string error;
         DispatcherTimer timer;
         public static int countTimer;
+        public static Task TaskOnTcp, TaskOnUdp;
+        public static CancellationTokenSource CancelTaskToken;
+        public static CancellationToken ct;
 
         public MainWindow()
         {
@@ -58,6 +62,7 @@ namespace Client1
                 Disconnect(Username.Text);
                 ConnectBtn.Content = "Connect";
                 OnLine=false;
+                checkFirstConnect = false;
             }
         }
 
@@ -96,26 +101,33 @@ namespace Client1
             }
         }
 
-        static void Disconnect(string name)
+        void Disconnect(string name)
         {
-            
             string msg = $"{name}/Disconnect";
             Byte[] data = System.Text.Encoding.ASCII.GetBytes(msg);            
             stream.Write(data, 0, data.Length);
-            Console.WriteLine("Sent: {0}", msg);
-            stream.Close();
-            clientTcp.Close();
+            Debug.WriteLine($"Sent: {0}", msg);
+            CancelTaskToken.Cancel();
+            lock (clientTcp){               
+                stream.Close();
+                clientTcp.Close();               
+            }
+            lock (clientUdp)
+            {
+                clientUdp.Close();
+            }
+            this.Dispatcher.Invoke(() =>
+            {
+                contactsComboBox.Items.Clear();
+            });
         }
 
         private void can_Loaded(object sender, RoutedEventArgs e)
         {
             portAddressTcp = rnd.Next(5000, 13000);
             portAddressUdp = rnd.Next(15000, 20000);
+            
             groupEp = new IPEndPoint(IPAddress.Any, 0);
-            Thread t1 = new Thread(AlwaysReciveTcp);
-            Thread t2=new Thread(AlwaysReciveUdp);
-            t1.Start();
-            t2.Start();            
             type = protocol.tcp;
             tcpChoose.IsEnabled = false;
             udpChoose.IsEnabled = true;
@@ -123,29 +135,53 @@ namespace Client1
 
         private void AlwaysReciveUdp()
         {
-            checkFlag = true;
-            while(true)
+            while (true)
             {
-                if (clientUdp!=null&&OnLine)
-                {              
-                    Byte[] receiveBytes = clientUdp.Receive(ref groupEp);
-                    string returnData = Encoding.ASCII.GetString(receiveBytes);
-                    addTextToReciveBox(returnData);
+                try
+                {
+                    CancelTaskToken.Token.ThrowIfCancellationRequested();
+                    if (OnLine && clientUdp.Client.Connected && clientUdp != null)
+                    {
+                        Byte[] receiveBytes = clientUdp.Receive(ref groupEp);
+                        CheckReciveMessage(receiveBytes, receiveBytes.Length);
+                    }
+                }
+                catch (SocketException e)
+                {
+                    Debug.WriteLine($"Connection closed: {e}");
+                }
+
+                catch (OperationCanceledException e)
+                {
+                    Debug.WriteLine($"Task stoped {e}");
                 }
             }
+            
         }
 
         private void AlwaysReciveTcp()
-        {            
-            while(true)
+        {
+            while (true)
             {
-                if (OnLine)
-                {                    
-                    Byte[] data = new Byte[256];
-                    NetworkStream stream = clientTcp.GetStream();
-                    Int32 bytes = stream.Read(data, 0, data.Length);
-                    CheckReciveMessage(data, bytes);
-                    
+                try
+                {
+                    CancelTaskToken.Token.ThrowIfCancellationRequested();
+                    if (OnLine)
+                    {
+                        Byte[] data = new Byte[256];
+                        NetworkStream stream = clientTcp.GetStream();
+                        Int32 bytes = stream.Read(data, 0, data.Length);
+                        CheckReciveMessage(data, bytes);
+                    }
+                }
+                catch (SocketException e)
+                {
+                    Debug.WriteLine($"Connection closed: {e}");
+                }
+
+                catch (OperationCanceledException e)
+                {
+                    Debug.WriteLine($"Task stoped {e}");
                 }
             }   
         }
@@ -187,8 +223,11 @@ namespace Client1
             
         }
 
-        public static void ConnectServer(String server,string name)
+        public  void ConnectServer(String server,string name)
         {
+            CancelTaskToken=new CancellationTokenSource();
+            TaskOnTcp = Task.Run(AlwaysReciveTcp, CancelTaskToken.Token);
+            TaskOnUdp = Task.Run(AlwaysReciveUdp, CancelTaskToken.Token);
             TcpConnectionServer(server, name);
             UdpConnectionServer(name);
         }
