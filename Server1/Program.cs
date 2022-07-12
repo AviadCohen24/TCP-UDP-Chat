@@ -7,66 +7,18 @@ using System.Net.Sockets;
 
 namespace Server1
 {
-    public abstract class AllClients
-    {
-        public string name { get; set; }
-        public Int32 portAddress { get; set; }
-        public IPAddress ipClient { get; set; }
-        public bool IsOnline { get; set; }  
-
-        public AllClients(string n, Int32 port, IPAddress ip, bool isOnline)
-        {
-            this.name = n;
-            this.portAddress = port;
-            this.ipClient = ip;
-            IsOnline = isOnline;
-        }
-    }
-    
-    class Clients:AllClients
-    {
-
-        public TcpClient client { get; set; }
-        
-        
-        public Clients(TcpClient client, string name, Int32 port, IPAddress ipClient, bool ol):base(name,port,ipClient,ol)
-        {
-            this.client = client;
-            
-        }
-    }
-    class ClientsUdp:AllClients
-    {
-
-        public IPEndPoint groupEP { get; set; }
-
-        public ClientsUdp( string Name, Int32 por, IPAddress ip, IPEndPoint g,bool ol):base(Name,por,ip,ol)
-        {
-                   
-            groupEP = g;
-        }
-    }
     class Program
     {
         protected static List<AllClients> members;
-        
-        protected static TcpListener server;
-        
-        public static bool serverOn = true;
+        protected static TcpListener server; 
+        public static bool serverOn;
         public static Int32 port, portUdp;
         protected static IPEndPoint groupEP;
         public static UdpClient listener;
 
         public static void Main()
         {
-            members = new List<AllClients>();            
-            server = null;
-            port = 13000;
-            portUdp = 14000;            
-            IPAddress localAddr = IPAddress.Parse("127.0.0.1");            
-            groupEP = new IPEndPoint(IPAddress.Any, 0);
-            listener = new UdpClient(portUdp);
-            server = new TcpListener(localAddr, port);
+            SetUp();
             server.Start();
             while (serverOn)
             {
@@ -76,6 +28,19 @@ namespace Server1
                 ThreadPool.QueueUserWorkItem(ServerRunningUdp, groupEP);
             }
             
+        }
+
+        private static void SetUp()
+        {
+            members = new List<AllClients>();
+            server = null;
+            port = 13000;
+            portUdp = 14000;
+            IPAddress localAddr = IPAddress.Parse("127.0.0.1");
+            groupEP = new IPEndPoint(IPAddress.Any, 0);
+            listener = new UdpClient(portUdp);
+            server = new TcpListener(localAddr, port);
+            serverOn = true;
         }
 
         private static void ServerRunningUdp(Object obj)
@@ -88,120 +53,119 @@ namespace Server1
                 {
                     if (listener == null)
                         listener = new UdpClient(portUdp);
-                    Console.WriteLine("Waiting for broadcast");                   
-                    byte[] bytes = listener.Receive(ref group);
-                    string data = System.Text.Encoding.ASCII.GetString(bytes, 0, bytes.Length);
-                    Console.WriteLine($"Received broadcast from {group} : {data}");
-                    string action = data.Split("/").Last();
-
-                    switch (action)
-                    {
-                        case "ConnectUdp":
-                            {
-                                ConnectServerByUdp(group, data);
-                                break;
-                            }
-                        case "Send":
-                            {
-                                string nameSender = data.Split("/").First();
-                                SendMessageByUDP(data, nameSender);
-                                break;
-                            }
-                        case "Disconnect":
-                            {
-                                foreach (var c in members)
-                                {
-                                    if (c.portAddress == group.Port)
-                                    {
-                                        c.IsOnline = false;
-                                    }
-                                }
-
-                                break;
-                            }
-                    }
-                    
+                    listenOnUdp(listener, group);            
                 }
             }
             catch (SocketException e)
             {
                 Console.WriteLine(e);
+            }   
+        }
+
+        private static void listenOnUdp(UdpClient listener, IPEndPoint group)
+        {
+            Console.WriteLine("Waiting for broadcast");
+            byte[] bytes = listener.Receive(ref group);
+            string data = System.Text.Encoding.ASCII.GetString(bytes, 0, bytes.Length);
+            Console.WriteLine($"Received broadcast from {group} : {data}");
+            string action = data.Split("/").Last();
+            RecivedActionByUdp(action, data, group);
+        }
+
+        private static void RecivedActionByUdp(string action, string data, IPEndPoint group)
+        {
+            switch (action)
+            {
+                case "ConnectUdp":
+                    {
+                        ConnectServerByUdp(group, data);
+                        break;
+                    }
+                case "Send":
+                    {
+                        string nameSender = data.Split("/").First();
+                        SendMessageByUDP(data, nameSender);
+                        break;
+                    }
+                case "Disconnect":
+                    {
+                        DisconnectClient(group.Port);
+                        break;
+                    }
             }
-           
-            
         }
 
         private static void ConnectServerByUdp(IPEndPoint group, string data)
         {
-            members.Add(new ClientsUdp(data.Split("/").First()+"UdpTemp",group.Port,group.Address,group, true));
+            string name = data.Split("/").First() + "UdpTemp";
+            members.Add(new ClientsUdp(name,group, true));
         }
 
         private static void ServerRunnig(Object obj)
         {
                 Console.WriteLine("Server Tcp started");
-                TcpClient clientConnected = (TcpClient)obj;
-                Byte[] bytes = new Byte[256];
-                String data = null;
+                TcpClient clientConnected = (TcpClient)obj;                
 
-                // Enter the listening loop.
                 while (true)
                 {
                     
                     Console.WriteLine($"{((IPEndPoint)clientConnected.Client.RemoteEndPoint).Address.ToString()} Connected!");
-
-                    data = null;
-
-                    // Get a stream object for reading and writing
-                    NetworkStream stream = clientConnected.GetStream();
-
-                    int i;
-
-                    // Loop to receive all the data sent by the client.
-                    
-                    while ((i = stream.Read(bytes, 0, bytes.Length)) != 0)
-                    {
-                        // Translate data bytes to a ASCII string.
-                        data = System.Text.Encoding.ASCII.GetString(bytes, 0, i);
-                        Console.WriteLine("Received: {0}", data);
-                        string action = data.Split("/").Last();
-                        // Process the data sent by the client.
-                        switch (action)
-                        {
-                            case "ConnectTcp":
-                                {
-                                    ConnectToClient(clientConnected, data);
-
-
-                                    /* -----Ask for online members-----*/
-
-                                    break;
-                                }
-                            case "Send":
-                                {
-                                    string nameSender = data.Split("/").First();
-                                    SendMessage(data, nameSender);                                   
-                                    break;
-                                }
-                            case "Disconnect":
-                                {
-                                    foreach (var c in members)
-                                    {
-                                       if(c.portAddress== ((IPEndPoint)clientConnected.Client.RemoteEndPoint).Port)
-                                       {
-                                        c.IsOnline = false;
-                                       }
-                                    }
-
-                                    break;
-                                }
-                        }
-                    }   
+                    listenOnTcp(clientConnected);                      
                 }
-            server.Stop();
-            
-
+                server.Stop();
             Console.WriteLine("\nHit enter to continue...");
             Console.Read();
+        }
+
+        private static void listenOnTcp(TcpClient clientConnected)
+        {
+            String data = null;
+            Byte[] bytes = new Byte[256];
+            NetworkStream stream = clientConnected.GetStream();
+            int i;
+
+            while ((i = stream.Read(bytes, 0, bytes.Length)) != 0)
+            {
+
+                data = System.Text.Encoding.ASCII.GetString(bytes, 0, i);
+                Console.WriteLine("Received: {0}", data);
+                string action = data.Split("/").Last();
+                RecivedActionByTcp(action, data, clientConnected);
+            }
+        }
+
+        private static void RecivedActionByTcp(string action, string data, TcpClient clientConnected)
+        {
+            switch (action)
+            {
+                case "ConnectTcp":
+                    {
+                        ConnectToClient(clientConnected, data);
+                        break;
+                    }
+                case "Send":
+                    {
+                        string nameSender = data.Split("/").First();
+                        SendMessage(data, nameSender);
+                        break;
+                    }
+                case "Disconnect":
+                    {
+                        DisconnectClient(((IPEndPoint)clientConnected.Client.RemoteEndPoint).Port);
+                        break;
+                    }
+            }
+        }
+
+        private static void DisconnectClient(int port)
+        {
+            foreach (var c in members)
+            {
+                if (c.portAddress == port)
+                {
+                    c.IsOnline = false;
+                }
+            }
         }
 
         private static void SendMessageByUDP(string data, string nameSender)
@@ -210,26 +174,30 @@ namespace Server1
             {
                 if (client.name == (data.Split("/")[1]+"UdpTemp"))
                 {
-                    string msg=nameSender+": "+data.Split("/")[2];
-                    byte[] msgToSend = System.Text.Encoding.ASCII.GetBytes(msg);
+                    byte[] msgToSend = CreateMessage(data, nameSender);
                     listener.Send(msgToSend, msgToSend.Length, new IPEndPoint(client.ipClient,client.portAddress));
                     break;
                 }
             }      
         }
 
+        private static byte[] CreateMessage(string data, string nameSender)
+        {
+            string msg = nameSender + ": " + data.Split("/")[2] + "-Message";
+            byte[] msgToSend = System.Text.Encoding.ASCII.GetBytes(msg);
+            return msgToSend;
+        }
+
         private static void SendMessage(string data, string nameSender)
         {
             foreach (AllClients c in members)
             {
-                if (c.GetType()==typeof(Clients)&&c.name == data.Split("/")[1])
+                if (c.GetType()==typeof(ClientsTcp)&&c.name == data.Split("/")[1])
                 {
-                    Clients client = (Clients)c;
-                    string msg = nameSender+": "+data.Split("/")[2]+ "-Message";
-                    byte[] msgToSend = System.Text.Encoding.ASCII.GetBytes(msg);
+                    ClientsTcp client = (ClientsTcp)c;
+                    byte[] msgToSend = CreateMessage(data, nameSender);
                     NetworkStream stream = client.client.GetStream(); 
                     stream.Write(msgToSend, 0, msgToSend.Length);
-                    Console.WriteLine($"sent {msg} to {client.name}");
                     break;
                 }               
             }
@@ -237,9 +205,8 @@ namespace Server1
 
         private static void ConnectToClient(TcpClient clientConnected, string data)
         {
-            Int32 portClient = Int32.Parse(data.Split("/")[1]);
-            members.Add(new Clients(clientConnected, data.Split("/").First(), portClient, ((IPEndPoint)clientConnected.Client.RemoteEndPoint).Address, true));            
-
+            string name = data.Split("/").First();
+            members.Add(new ClientsTcp(clientConnected, name , true));            
             SendUpdateContactList();
         }
 
@@ -247,9 +214,9 @@ namespace Server1
         {
             foreach(AllClients c in members)
             {
-                if (c.GetType() == typeof(Clients))
+                if (c.GetType() == typeof(ClientsTcp))
                 {
-                    Clients temp = (Clients)c;
+                    ClientsTcp temp = (ClientsTcp)c;
                     string onlineMem = ListToSTring(temp.name);
                     byte[] buffer = System.Text.Encoding.ASCII.GetBytes(onlineMem);
                     NetworkStream stream = temp.client.GetStream();
