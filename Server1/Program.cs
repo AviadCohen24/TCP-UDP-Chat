@@ -47,19 +47,19 @@ namespace Server1
         {            
             Console.WriteLine("Server Udp started");            
             IPEndPoint group = (IPEndPoint)obj;
-            try
+            while (true)
             {
-                while (true)
+                if (listener == null)
+                    listener = new UdpClient(portUdp);
+                try
                 {
-                    if (listener == null)
-                        listener = new UdpClient(portUdp);
-                    listenOnUdp(listener, group);            
+                    listenOnUdp(listener, group);
                 }
-            }
-            catch (SocketException e)
-            {
-                Console.WriteLine(e);
-            }   
+                catch (SocketException e)
+                {
+                    Console.WriteLine(e);
+                }
+            }               
         }
 
         private static void listenOnUdp(UdpClient listener, IPEndPoint group)
@@ -89,9 +89,21 @@ namespace Server1
                     }
                 case "Disconnect":
                     {
-                        DisconnectClient(group.Port);
+                        DisconnectClientOnUdp(group.Port);
                         break;
                     }
+            }
+        }
+
+        private static void DisconnectClientOnUdp(int port)
+        {
+            foreach(var client in members)
+            {
+                if (client.portAddress == port && client.name.Contains("UdpTemp"))
+                {
+                    members.Remove(client);
+                    break;
+                }
             }
         }
 
@@ -105,12 +117,20 @@ namespace Server1
         {
                 Console.WriteLine("Server Tcp started");
                 TcpClient clientConnected = (TcpClient)obj;                
-
                 while (true)
                 {
-                    
-                    Console.WriteLine($"{((IPEndPoint)clientConnected.Client.RemoteEndPoint).Address.ToString()} Connected!");
-                    listenOnTcp(clientConnected);                      
+                    if (clientConnected.Connected)
+                    {
+                        Console.WriteLine($"{((IPEndPoint)clientConnected.Client.RemoteEndPoint).Address.ToString()} Connected!");
+                        try
+                        {
+                            listenOnTcp(clientConnected);
+                        }
+                        catch (SocketException e)
+                        {
+                            Console.WriteLine($"Connection closed {e}");
+                        }
+                    }
                 }
                 server.Stop();
             Console.WriteLine("\nHit enter to continue...");
@@ -124,7 +144,7 @@ namespace Server1
             NetworkStream stream = clientConnected.GetStream();
             int i;
 
-            while ((i = stream.Read(bytes, 0, bytes.Length)) != 0)
+            while (clientConnected.Connected && (i = stream.Read(bytes, 0, bytes.Length)) != 0)
             {
 
                 data = System.Text.Encoding.ASCII.GetString(bytes, 0, i);
@@ -151,20 +171,33 @@ namespace Server1
                     }
                 case "Disconnect":
                     {
-                        DisconnectClient(((IPEndPoint)clientConnected.Client.RemoteEndPoint).Port);
+                        DisconnectClientOnTcp(clientConnected);
                         break;
                     }
             }
         }
 
-        private static void DisconnectClient(int port)
+        private static void DisconnectClientOnTcp(TcpClient clientConnected)
         {
-            foreach (var c in members)
+            foreach (var client in members)
             {
-                if (c.portAddress == port)
+                if (client.portAddress == ((IPEndPoint)clientConnected.Client.RemoteEndPoint).Port)
                 {
-                    c.IsOnline = false;
+                    if (client.GetType() == typeof(ClientsTcp))
+                        CloseSocketForTcp(clientConnected);
+                    members.Remove(client);
+                    break;
                 }
+            }
+            SendUpdateContactList();
+        }
+
+        private static void CloseSocketForTcp(TcpClient client)
+        {
+            lock (client)
+            {
+                client.GetStream().Close();
+                client.Close();
             }
         }
 
@@ -190,13 +223,13 @@ namespace Server1
 
         private static void SendMessage(string data, string nameSender)
         {
-            foreach (AllClients c in members)
+            foreach (AllClients client in members)
             {
-                if (c.GetType()==typeof(ClientsTcp)&&c.name == data.Split("/")[1])
+                if (client.GetType()==typeof(ClientsTcp)&&client.name == data.Split("/")[1])
                 {
-                    ClientsTcp client = (ClientsTcp)c;
+                    ClientsTcp tempClient = (ClientsTcp)client;
                     byte[] msgToSend = CreateMessage(data, nameSender);
-                    NetworkStream stream = client.client.GetStream(); 
+                    NetworkStream stream = tempClient.client.GetStream(); 
                     stream.Write(msgToSend, 0, msgToSend.Length);
                     break;
                 }               
@@ -212,11 +245,11 @@ namespace Server1
 
         private static void SendUpdateContactList()
         {
-            foreach(AllClients c in members)
+            foreach (AllClients client in members.ToList())
             {
-                if (c.GetType() == typeof(ClientsTcp))
+                if (client.GetType() == typeof(ClientsTcp))
                 {
-                    ClientsTcp temp = (ClientsTcp)c;
+                    ClientsTcp temp = (ClientsTcp)client;
                     string onlineMem = ListToSTring(temp.name);
                     byte[] buffer = System.Text.Encoding.ASCII.GetBytes(onlineMem);
                     NetworkStream stream = temp.client.GetStream();
